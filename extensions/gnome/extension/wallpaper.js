@@ -38,6 +38,21 @@ export function rendererPresentationReady(actor) {
 
 const FADE_IN_MS = 800;
 
+// The MetaSurfaceActor under a window actor is the one that emits
+// 'repaint-scheduled'; it sits below a surface container.
+function findRepaintSource(actor) {
+    if (!actor)
+        return null;
+    if (GObject.signal_lookup('repaint-scheduled', actor.constructor.$gtype))
+        return actor;
+    for (const child of actor.get_children?.() ?? []) {
+        const found = findRepaintSource(child);
+        if (found)
+            return found;
+    }
+    return null;
+}
+
 // From LiveWallpaper: Meta.BackgroundContent clips its own pixels, not child clones.
 const CLIP_DECLARATIONS = `
 uniform vec4 bounds;
@@ -315,6 +330,7 @@ class LiveWallpaper extends St.Widget {
                 this._schedulePoll();
             });
             this._sourceActor = renderer;
+            this._followRedrawsToLockScreen();
             this._sourceDestroyId = renderer.connect('destroy',
                 () => this._onSourceDestroyed());
             this.add_child(this._cloneActor);
@@ -336,6 +352,25 @@ class LiveWallpaper extends St.Widget {
             return;
         }
         this._schedulePoll();
+    }
+
+    // Blur my Shell blurs the lock screen from an invisible copy of the
+    // background and shows a Clutter.Clone of that copy. Damage from our
+    // clone never reaches the outer clone, so the lock screen would freeze
+    // on one frame. Forward each of our redraws to the widget that holds both.
+    _followRedrawsToLockScreen() {
+        const copy = this._backgroundActor?.get_parent?.();
+        if (!copy?.get_name?.()?.endsWith('-source'))
+            return;
+        const shield = copy.get_parent?.();
+        if (shield?.get_name?.() !== 'screen-shield-background')
+            return;
+        // The renderer's surface actor announces every committed buffer.
+        const surface = findRepaintSource(this._sourceActor);
+        if (!surface)
+            return;
+        this._redrawId = surface.connect('repaint-scheduled', () => shield.queue_redraw());
+        this._redrawSurface = surface;
     }
 
     _schedulePoll() {
@@ -390,6 +425,11 @@ class LiveWallpaper extends St.Widget {
     }
 
     _detachRenderer() {
+        if (this._redrawId) {
+            try { this._redrawSurface.disconnect(this._redrawId); } catch (_e) {}
+            this._redrawId = 0;
+            this._redrawSurface = null;
+        }
         if (this._sourceActor && this._sourceDestroyId)
             this._sourceActor.disconnect(this._sourceDestroyId);
         this._sourceActor = null;

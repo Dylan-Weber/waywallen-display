@@ -28,6 +28,10 @@ class Actor {
     add_child(child) { this.children.add(child); child.parent = this; }
     add_effect(effect) { this.effects.add(effect); effect.actor = this; }
     remove_effect(effect) { assert.ok(this.effects.delete(effect)); effect.actor = null; }
+    get_parent() { return this.parent ?? null; }
+    get_children() { return [...this.children]; }
+    get_name() { return this.name ?? null; }
+    queue_redraw() { this.redraws = (this.redraws ?? 0) + 1; }
     vfunc_allocate(box) { this.allocation = box; }
     queue_relayout() { this.relayouts = (this.relayouts ?? 0) + 1; }
     set_position(x, y) { Object.assign(this, {x, y}); }
@@ -54,6 +58,10 @@ class Actor {
         this.handlers.clear();
         this.disposed = true;
     }
+}
+
+class Surface extends Actor {
+    static $gtype = 'surface';
 }
 
 class ShaderEffect {
@@ -110,7 +118,8 @@ function setup({shell51 = false} = {}) {
         .replace(/^import .*;\n/gm, '')
         .replace(/^export /gm, '');
     const Wallpaper = vm.runInNewContext(`${source}\n({LiveWallpaper, WallpaperRole, APPLICATION_ID})`, {
-        St: {Widget: Actor}, GObject: {registerClass(klass) {
+        St: {Widget: Actor}, GObject: {signal_lookup: (name, gtype) =>
+            name === 'repaint-scheduled' && gtype === 'surface' ? 1 : 0, registerClass(klass) {
             if (klass.prototype instanceof ShaderEffect) {
                 const methods = Object.getOwnPropertyNames(klass.prototype);
                 assert.equal(methods.includes('vfunc_build_pipeline'), !shell51);
@@ -141,8 +150,10 @@ function setup({shell51 = false} = {}) {
         windows.push(actor);
         return {actor, launcher: {ownsWindow: window => window === actor.meta_window}};
     }
-    function wallpaper(launcher, available = true, role = Wallpaper.WallpaperRole.Desktop) {
+    function wallpaper(launcher, available = true, role = Wallpaper.WallpaperRole.Desktop,
+        parent = null) {
         const background = new Actor({monitor: 0});
+        parent?.add_child(background);
         const content = new Actor({brightness: 0.5, vignette: false, rounded_clip_radius: 0});
         Object.defineProperty(background, 'content', {get() {
             assert.ok(!background.destroying && !background.disposed, 'read disposing background');
@@ -381,3 +392,29 @@ for (const shell51 of [false, true]) {
         assert.equal(content.handlers.size, 0);
     });
 }
+
+test('lock screen blur copies repaint when the renderer commits a frame', () => {
+    const s = setup();
+    const r = s.renderer();
+    const surface = new Surface();
+    r.actor.add_child(surface);
+    const shield = new Actor({name: 'screen-shield-background'});
+    const copy = new Actor({name: 'screen-shield-background-source'});
+    shield.add_child(copy);
+    const {actor} = s.wallpaper(r.launcher, true, 'other', copy);
+    surface.emit('repaint-scheduled');
+    assert.equal(shield.redraws, 1);
+    actor.setRendererAvailable(false);
+    assert.equal(surface.handlers.size, 0);
+    surface.emit('repaint-scheduled');
+    assert.equal(shield.redraws, 1);
+});
+
+test('backgrounds outside a lock screen blur copy do not follow renderer repaints', () => {
+    const s = setup();
+    const r = s.renderer();
+    const surface = new Surface();
+    r.actor.add_child(surface);
+    s.wallpaper(r.launcher);
+    assert.equal(surface.handlers.size, 0);
+});
