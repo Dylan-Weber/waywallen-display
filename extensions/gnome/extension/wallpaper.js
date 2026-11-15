@@ -38,6 +38,21 @@ export function rendererPresentationReady(actor) {
 
 const FADE_IN_MS = 800;
 
+// The MetaSurfaceActor under a window actor is the one that emits
+// 'repaint-scheduled'; it sits below a surface container.
+function findRepaintSource(actor) {
+    if (!actor)
+        return null;
+    if (GObject.signal_lookup('repaint-scheduled', actor.constructor.$gtype))
+        return actor;
+    for (const child of actor.get_children?.() ?? []) {
+        const found = findRepaintSource(child);
+        if (found)
+            return found;
+    }
+    return null;
+}
+
 // From LiveWallpaper: Meta.BackgroundContent clips its own pixels, not child clones.
 const CLIP_DECLARATIONS = `
 uniform vec4 bounds;
@@ -315,6 +330,7 @@ class LiveWallpaper extends St.Widget {
                 this._schedulePoll();
             });
             this._sourceActor = renderer;
+            this._followRedrawsToLockScreen();
             this._sourceDestroyId = renderer.connect('destroy',
                 () => this._onSourceDestroyed());
             this.add_child(this._cloneActor);
@@ -336,6 +352,32 @@ class LiveWallpaper extends St.Widget {
             return;
         }
         this._schedulePoll();
+    }
+
+    // Our clone only damages the actors above it in the paint tree. When
+    // something shows the lock screen background through a detour, such as
+    // a hidden copy of it that is re-shown by a Clutter.Clone (to apply its
+    // own effects), the visible side never hears about new frames and the
+    // lock screen freezes. Forward each committed frame to the lock screen
+    // background widget. The stock lock screen holds us directly and
+    // repaints on its own, so it needs no forwarding.
+    _followRedrawsToLockScreen() {
+        let parent = this._backgroundActor?.get_parent?.();
+        let shield = null;
+        for (let depth = 0; parent; parent = parent.get_parent?.(), depth++) {
+            if (parent.get_name?.() === 'screen-shield-background') {
+                shield = depth > 0 ? parent : null;
+                break;
+            }
+        }
+        if (!shield)
+            return;
+        // The renderer's surface actor announces every committed buffer.
+        const surface = findRepaintSource(this._sourceActor);
+        if (!surface)
+            return;
+        this._redrawId = surface.connect('repaint-scheduled', () => shield.queue_redraw());
+        this._redrawSurface = surface;
     }
 
     _schedulePoll() {
@@ -390,6 +432,11 @@ class LiveWallpaper extends St.Widget {
     }
 
     _detachRenderer() {
+        if (this._redrawId) {
+            try { this._redrawSurface.disconnect(this._redrawId); } catch (_e) {}
+            this._redrawId = 0;
+            this._redrawSurface = null;
+        }
         if (this._sourceActor && this._sourceDestroyId)
             this._sourceActor.disconnect(this._sourceDestroyId);
         this._sourceActor = null;
