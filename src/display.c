@@ -2203,6 +2203,15 @@ static void vk_release_current_pool(waywallen_display_t* d) {
     unsigned len  = 0;
     for (struct ww_vk_pending_pool* cur = d->vk_pending; cur; cur = cur->next) len++;
     pthread_mutex_unlock(&d->pending_mutex);
+    /* The dmabuf relay owns its VkDevice (ww_vk_create_owned), so nothing else can be using the retired
+     * images: wait for the relay's last blit and destroy them here. The GObject host (GTK) has no render-thread
+     * drain hook, so without this every rebind kept its pool (3 imported VkImages, ~90 MB of VRAM at
+     * 5120x1440, plus their fds) until the display was freed. */
+    if (d->backend == WAYWALLEN_BACKEND_DMABUF_RELAY && d->vk_owned.device != VK_NULL_HANDLE) {
+        (void)ww_vk_blitter_drain_pending_release(&d->vk_relay_blitter, NULL);
+        (void)waywallen_display_drain(d);
+        return;
+    }
     if (len > 4) {
         ww_log(WAYWALLEN_LOG_WARN,
                "vk pending pool list grew to %u — host render thread "
