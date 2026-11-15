@@ -393,13 +393,13 @@ for (const shell51 of [false, true]) {
     });
 }
 
-test('lock screen blur copies repaint when the renderer commits a frame', () => {
+test('a lock screen background shown through a hidden copy repaints on each renderer frame', () => {
     const s = setup();
     const r = s.renderer();
     const surface = new Surface();
     r.actor.add_child(surface);
     const shield = new Actor({name: 'screen-shield-background'});
-    const copy = new Actor({name: 'screen-shield-background-source'});
+    const copy = new Actor({name: 'hidden-copy'});
     shield.add_child(copy);
     const {actor} = s.wallpaper(r.launcher, true, 'other', copy);
     surface.emit('repaint-scheduled');
@@ -410,11 +410,13 @@ test('lock screen blur copies repaint when the renderer commits a frame', () => 
     assert.equal(shield.redraws, 1);
 });
 
-test('backgrounds outside a lock screen blur copy do not follow renderer repaints', () => {
+test('backgrounds outside the lock screen, or directly in it, do not follow renderer repaints', () => {
     const s = setup();
     const r = s.renderer();
     const surface = new Surface();
     r.actor.add_child(surface);
     s.wallpaper(r.launcher);
+    assert.equal(surface.handlers.size, 0);
+    s.wallpaper(r.launcher, true, 'other', new Actor({name: 'screen-shield-background'}));
     assert.equal(surface.handlers.size, 0);
 });

@@ -354,16 +354,23 @@ class LiveWallpaper extends St.Widget {
         this._schedulePoll();
     }
 
-    // Blur my Shell blurs the lock screen from an invisible copy of the
-    // background and shows a Clutter.Clone of that copy. Damage from our
-    // clone never reaches the outer clone, so the lock screen would freeze
-    // on one frame. Forward each of our redraws to the widget that holds both.
+    // Our clone only damages the actors above it in the paint tree. When
+    // something shows the lock screen background through a detour, such as
+    // a hidden copy of it that is re-shown by a Clutter.Clone (to apply its
+    // own effects), the visible side never hears about new frames and the
+    // lock screen freezes. Forward each committed frame to the lock screen
+    // background widget. The stock lock screen holds us directly and
+    // repaints on its own, so it needs no forwarding.
     _followRedrawsToLockScreen() {
-        const copy = this._backgroundActor?.get_parent?.();
-        if (!copy?.get_name?.()?.endsWith('-source'))
-            return;
-        const shield = copy.get_parent?.();
-        if (shield?.get_name?.() !== 'screen-shield-background')
+        let parent = this._backgroundActor?.get_parent?.();
+        let shield = null;
+        for (let depth = 0; parent; parent = parent.get_parent?.(), depth++) {
+            if (parent.get_name?.() === 'screen-shield-background') {
+                shield = depth > 0 ? parent : null;
+                break;
+            }
+        }
+        if (!shield)
             return;
         // The renderer's surface actor announces every committed buffer.
         const surface = findRepaintSource(this._sourceActor);
