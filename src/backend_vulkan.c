@@ -938,6 +938,24 @@ int ww_vk_create_owned(ww_vk_owned_t* out) {
 
     int      picked_pd  = -1;
     uint32_t picked_qfi = 0;
+
+    /* WW_VK_RENDER_NODE=<major>:<minor> | /dev/dri/renderDN: prefer the device with that DRM
+     * render node (the one the host compositor / GTK renders on), else the first capable one. */
+    long want_major = -1, want_minor = -1;
+    const char* want = getenv("WW_VK_RENDER_NODE");
+    if (want) {
+        unsigned ma, mi;
+        if (sscanf(want, "%u:%u", &ma, &mi) == 2) {
+            want_major = ma;
+            want_minor = mi;
+        } else if (sscanf(want, "/dev/dri/renderD%u", &mi) == 1) {
+            want_major = 226; /* DRM_MAJOR */
+            want_minor = mi;
+        }
+    }
+    PFN_vkGetPhysicalDeviceProperties2 gpdp2 =
+        (PFN_vkGetPhysicalDeviceProperties2)gipa(out->instance, "vkGetPhysicalDeviceProperties2");
+    for (int pass = want_major >= 0 && gpdp2 ? 0 : 1; pass < 2 && picked_pd < 0; pass++)
     for (uint32_t i = 0; i < pd_count; i++) {
         uint32_t ec = 0;
         vkEnumerateDeviceExtensionProperties(pds[i], NULL, &ec, NULL);
@@ -974,8 +992,16 @@ int ww_vk_create_owned(ww_vk_owned_t* out) {
         free(qprops);
         if (q_index < 0) continue;
 
+        if (pass == 0) {
+            VkPhysicalDeviceDrmPropertiesEXT drm = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT };
+            VkPhysicalDeviceProperties2      pr  = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = &drm };
+            gpdp2(pds[i], &pr);
+            if (! drm.hasRender || drm.renderMajor != want_major || drm.renderMinor != want_minor) continue;
+        }
+
         picked_pd  = (int)i;
         picked_qfi = (uint32_t)q_index;
+        ww_log(WAYWALLEN_LOG_INFO, "vk owned: picked physical device %u (pass %d)", i, pass);
         break;
     }
 
