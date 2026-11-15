@@ -22,6 +22,16 @@
       <summary>Overlay connection / resolution / window-state on the wallpaper</summary>
     </key>
 
+    <key name="lock-blur" type="b">
+      <default>true</default>
+      <summary>Blur the lock screen wallpaper</summary>
+      <description>
+        Blur the live wallpaper behind the lock screen, as GNOME does for a
+        static one. Turn off to show it sharp. Has no effect while Blur my
+        Shell handles the lock screen: use its lock screen settings instead.
+      </description>
+    </key>
+
     <key name="overview-wallpaper" type="b">
       <default>true</default>
       <summary>Show the wallpaper behind the overview</summary>

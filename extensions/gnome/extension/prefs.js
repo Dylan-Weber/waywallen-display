@@ -112,6 +112,18 @@ export default class WaywallenPrefs extends ExtensionPreferences {
             ovGroup.add(bmsRow);
         }
 
+        // --- Lock screen ---
+        const lockGroup = new Adw.PreferencesGroup({title: _('Lock screen')});
+        page.add(lockGroup);
+
+        const lockBlurRow = new Adw.SwitchRow({
+            title: _('Blur lock screen wallpaper'),
+            subtitle: _('Turn off to show the live wallpaper sharp behind the clock. Blur my Shell, if it blurs the lock screen, uses its own settings.'),
+        });
+        settings.bind('lock-blur', lockBlurRow, 'active',
+            Gio.SettingsBindFlags.DEFAULT);
+        lockGroup.add(lockBlurRow);
+
         // --- Advanced ---
         const advGroup = new Adw.PreferencesGroup({title: _('Advanced')});
         page.add(advGroup);
