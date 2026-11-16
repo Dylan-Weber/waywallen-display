@@ -118,7 +118,7 @@ export default class WaywallenPrefs extends ExtensionPreferences {
 
         const lockBlurRow = new Adw.SwitchRow({
             title: _('Blur lock screen wallpaper'),
-            subtitle: _('Turn off to show the live wallpaper sharp behind the clock. An extension that replaces the lock screen's effects (such as Blur my Shell) uses its own settings.'),
+            subtitle: _('Turn off to show the live wallpaper sharp behind the clock. An extension that replaces the lock screen effects (such as Blur my Shell) uses its own settings.'),
         });
         settings.bind('lock-blur', lockBlurRow, 'active',
             Gio.SettingsBindFlags.DEFAULT);
