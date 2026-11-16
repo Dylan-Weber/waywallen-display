@@ -22,6 +22,17 @@
       <summary>Overlay connection / resolution / window-state on the wallpaper</summary>
     </key>
 
+    <key name="lock-blur" type="b">
+      <default>true</default>
+      <summary>Blur the lock screen wallpaper</summary>
+      <description>
+        Blur the live wallpaper behind the lock screen, as GNOME does for a
+        static one. Turn off to show it sharp. Has no effect while another
+        extension replaces the lock screen's background effects (for example
+        Blur my Shell): use that extension's settings instead.
+      </description>
+    </key>
+
     <key name="overview-wallpaper" type="b">
       <default>true</default>
       <summary>Show the wallpaper behind the overview</summary>

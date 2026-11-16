@@ -56,6 +56,7 @@ set(_ext_files
     extension/launcher.js
     extension/controlCodec.js
     extension/blur.js
+    extension/lockBlur.js
     extension/gnomeShellOverride.js
     extension/wallpaper.js
     extension/windowManager.js

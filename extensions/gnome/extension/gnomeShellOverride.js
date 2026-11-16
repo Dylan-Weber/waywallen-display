@@ -6,12 +6,14 @@ import Shell from 'gi://Shell';
 import {InjectionManager} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Background from 'resource:///org/gnome/shell/ui/background.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import {UnlockDialog} from 'resource:///org/gnome/shell/ui/unlockDialog.js';
 import * as Workspace from 'resource:///org/gnome/shell/ui/workspace.js';
 import * as WorkspaceThumbnail from 'resource:///org/gnome/shell/ui/workspaceThumbnail.js';
 
 import * as Wallpaper from './wallpaper.js';
 import {BlurController} from './blur.js';
 import {PauseEffectKind} from './controlCodec.js';
+import {applyLockBlur} from './lockBlur.js';
 
 const APPLICATION_ID = Wallpaper.APPLICATION_ID;
 
@@ -109,6 +111,16 @@ export class GnomeShellOverride {
                 return originalMethod.call(this).filter(a => a.get_n_windows() > 0);
             });
 
+        this._injection.overrideMethod(
+            UnlockDialog.prototype, '_updateBackgroundEffects',
+            originalMethod => function () {
+                originalMethod.call(this);
+                applyLockBlur(this._backgroundGroup.get_children(),
+                    self._settings?.get_boolean('lock-blur') ?? true);
+            });
+        this._lockBlurId = this._settings?.connect('changed::lock-blur',
+            () => Main.screenShield?._dialog?._updateBackgroundEffects?.()) ?? 0;
+
         this._readOverviewPrefs();
         this._overviewSettingsIds = [];
         if (this._settings) {
@@ -150,6 +162,10 @@ export class GnomeShellOverride {
     }
 
     disable() {
+        if (this._lockBlurId) {
+            try { this._settings?.disconnect(this._lockBlurId); } catch (_e) {}
+            this._lockBlurId = 0;
+        }
         for (const id of this._overviewSettingsIds || []) {
             try { this._settings?.disconnect(id); } catch (_e) {}
         }
